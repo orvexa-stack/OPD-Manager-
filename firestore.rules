@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore { match /databases/{d}/documents {
+  function signed() { return request.auth != null; }
+  function role() { return get(/databases/$(d)/documents/users/$(request.auth.uid)).data.role; }
+  function is(r) { return signed() && role() == r; }
+  match /users/{uid} {
+    allow read: if signed() && request.auth.uid == uid;
+    allow create: if signed() && request.auth.uid == uid && request.resource.data.role == 'PATIENT';
+    allow update, delete: if false;   // staff roles are set by the admin in the Firebase console
+  }
+  match /patients/{id} {
+    allow read: if is('DOCTOR') || is('COMPOUNDER') || (is('PATIENT') && resource.data.uid == request.auth.uid);
+    allow create, update: if is('COMPOUNDER');
+    allow delete: if false;
+  }
+  match /appointments/{id} {
+    allow read: if is('DOCTOR') || is('COMPOUNDER') || (is('PATIENT') && resource.data.patientUid == request.auth.uid);
+    allow create, update: if is('COMPOUNDER');
+    allow delete: if false;
+  }
+  match /counters/{id} { allow read, write: if is('COMPOUNDER'); }
+  match /notifications/{id} { allow create: if is('COMPOUNDER') || is('DOCTOR'); allow read, update, delete: if false; }
+  match /auditLogs/{id} {
+    allow create: if signed() && request.resource.data.uid == request.auth.uid;
+    allow read: if is('DOCTOR');
+    allow update, delete: if false;
+  }
+}}
